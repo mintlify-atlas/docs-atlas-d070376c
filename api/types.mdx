@@ -1,0 +1,249 @@
+---
+title: "Types"
+description: "TypeScript type definitions for all public Pretext APIs."
+---
+
+All types are exported from `@chenglou/pretext` and re-exported from the package's main entry point.
+
+<AccordionGroup>
+
+<Accordion title="PreparedText">
+
+An opaque handle returned by `prepare()`. Pass it to `layout()`.
+
+```ts
+declare const preparedTextBrand: unique symbol
+
+type PreparedText = {
+  readonly [preparedTextBrand]: true
+}
+```
+
+`PreparedText` is intentionally opaque — its internal structure is not part of the public API. Do not attempt to read or construct it directly. Obtain one from `prepare()` and pass it to `layout()`.
+
+If you need access to the underlying segment strings (for custom rendering), use `prepareWithSegments()` instead, which returns `PreparedTextWithSegments`.
+
+</Accordion>
+
+<Accordion title="PreparedTextWithSegments">
+
+Extends `PreparedText` with an exposed `segments` array. Returned by `prepareWithSegments()`. Pass to `layoutWithLines()`, `walkLineRanges()`, or `layoutNextLine()`.
+
+```ts
+type PreparedTextWithSegments = PreparedText & {
+  segments: string[]
+}
+```
+
+<ResponseField name="segments" type="string[]">
+  The segment strings produced during the prepare phase, aligned with Pretext's internal parallel arrays. For example, `['hello', ' ', 'world']`. Use these to reconstruct or render individual line fragments when building a custom renderer.
+</ResponseField>
+
+<Note>
+Treat `PreparedTextWithSegments` as an escape hatch for experiments and custom rendering. For pure height measurement, prefer the opaque `PreparedText` from `prepare()`.
+</Note>
+
+</Accordion>
+
+<Accordion title="PrepareOptions">
+
+Optional configuration passed as the third argument to `prepare()` and `prepareWithSegments()`.
+
+```ts
+type PrepareOptions = {
+  whiteSpace?: 'normal' | 'pre-wrap'
+}
+```
+
+<ResponseField name="whiteSpace" type="'normal' | 'pre-wrap'">
+  Controls whitespace handling during text analysis.
+
+  <Expandable title="values">
+    <ResponseField name="'normal'" type="string">
+      Default. Collapses runs of whitespace and ignores `\n` newlines, matching CSS `white-space: normal` behavior.
+    </ResponseField>
+    <ResponseField name="'pre-wrap'" type="string">
+      Preserves ordinary spaces, `\t` tabs, and `\n` hard breaks. Tabs follow default browser-style `tab-size: 8`. Useful for textarea-like inputs. The other wrapping defaults (`word-break: normal`, `overflow-wrap: break-word`, `line-break: auto`) remain unchanged.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+</Accordion>
+
+<Accordion title="LayoutResult">
+
+Returned by `layout()`. Contains the computed line count and total block height.
+
+```ts
+type LayoutResult = {
+  lineCount: number
+  height: number
+}
+```
+
+<ResponseField name="lineCount" type="number">
+  The number of wrapped lines produced at the given `maxWidth`. For example, `3`.
+</ResponseField>
+
+<ResponseField name="height" type="number">
+  Total block height in pixels. Equal to `lineCount * lineHeight`, where `lineHeight` is the value passed to `layout()`. For example, `57`.
+</ResponseField>
+
+</Accordion>
+
+<Accordion title="LayoutCursor">
+
+A position within a `PreparedTextWithSegments` handle, expressed as a segment index and a grapheme index within that segment. Used as `start` and `end` on `LayoutLine` and `LayoutLineRange`.
+
+```ts
+type LayoutCursor = {
+  segmentIndex: number
+  graphemeIndex: number
+}
+```
+
+<ResponseField name="segmentIndex" type="number">
+  Index into the `segments` array of the `PreparedTextWithSegments` handle.
+</ResponseField>
+
+<ResponseField name="graphemeIndex" type="number">
+  Grapheme index within the segment at `segmentIndex`. `0` at segment boundaries; non-zero only when a word was broken mid-grapheme by `overflow-wrap: break-word`.
+</ResponseField>
+
+Pass a line's `end` cursor as the `start` argument to the next `layoutNextLine()` call to stream lines one at a time.
+
+</Accordion>
+
+<Accordion title="LayoutLine">
+
+A single laid-out line, including its rendered text, measured width, and start/end cursors. Appears in the `lines` array of `LayoutLinesResult` and is returned by `layoutNextLine()`.
+
+```ts
+type LayoutLine = {
+  text: string
+  width: number
+  start: LayoutCursor
+  end: LayoutCursor
+}
+```
+
+<ResponseField name="text" type="string">
+  The full rendered text content of this line. For example, `'hello world'`. Trailing whitespace is not included; a trailing visible hyphen is included when a soft hyphen was chosen as the break point.
+</ResponseField>
+
+<ResponseField name="width" type="number">
+  The measured rendered width of this line in pixels. For example, `87.5`. Trailing whitespace does not contribute to `width`.
+</ResponseField>
+
+<ResponseField name="start" type="LayoutCursor">
+  Inclusive start position of this line in the prepared segment stream.
+
+  <Expandable title="LayoutCursor fields">
+    <ResponseField name="segmentIndex" type="number">Index into `PreparedTextWithSegments.segments`.</ResponseField>
+    <ResponseField name="graphemeIndex" type="number">Grapheme offset within that segment. `0` at segment boundaries.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="end" type="LayoutCursor">
+  Exclusive end position of this line. Pass as `start` to the next `layoutNextLine()` call.
+
+  <Expandable title="LayoutCursor fields">
+    <ResponseField name="segmentIndex" type="number">Index into `PreparedTextWithSegments.segments`.</ResponseField>
+    <ResponseField name="graphemeIndex" type="number">Grapheme offset within that segment. `0` at segment boundaries.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+</Accordion>
+
+<Accordion title="LayoutLineRange">
+
+Like `LayoutLine` but without the `text` field. Produced by `walkLineRanges()`. Useful when you need line geometry (widths and cursors) without paying the cost of building line text strings.
+
+```ts
+type LayoutLineRange = {
+  width: number
+  start: LayoutCursor
+  end: LayoutCursor
+}
+```
+
+<ResponseField name="width" type="number">
+  The measured rendered width of this line in pixels. For example, `87.5`.
+</ResponseField>
+
+<ResponseField name="start" type="LayoutCursor">
+  Inclusive start position of this line in the prepared segment stream.
+
+  <Expandable title="LayoutCursor fields">
+    <ResponseField name="segmentIndex" type="number">Index into `PreparedTextWithSegments.segments`.</ResponseField>
+    <ResponseField name="graphemeIndex" type="number">Grapheme offset within that segment. `0` at segment boundaries.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="end" type="LayoutCursor">
+  Exclusive end position of this line.
+
+  <Expandable title="LayoutCursor fields">
+    <ResponseField name="segmentIndex" type="number">Index into `PreparedTextWithSegments.segments`.</ResponseField>
+    <ResponseField name="graphemeIndex" type="number">Grapheme offset within that segment. `0` at segment boundaries.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+A common pattern is to use `walkLineRanges()` to binary-search for a satisfying container width, then call `layoutWithLines()` once with that width to get the full `LayoutLine` objects:
+
+```ts
+import { prepareWithSegments, walkLineRanges, layoutWithLines } from '@chenglou/pretext'
+
+const prepared = prepareWithSegments('AGI 春天到了. بدأت الرحلة 🚀', '16px Inter')
+
+let maxLineWidth = 0
+walkLineRanges(prepared, 320, line => {
+  if (line.width > maxLineWidth) maxLineWidth = line.width
+})
+// maxLineWidth is the tightest container width that still fits the text
+```
+
+</Accordion>
+
+<Accordion title="LayoutLinesResult">
+
+Extends `LayoutResult` with a `lines` array. Returned by `layoutWithLines()`.
+
+```ts
+type LayoutLinesResult = LayoutResult & {
+  lines: LayoutLine[]
+}
+```
+
+<ResponseField name="lineCount" type="number">
+  The number of wrapped lines produced at the given `maxWidth`.
+</ResponseField>
+
+<ResponseField name="height" type="number">
+  Total block height in pixels. Equal to `lineCount * lineHeight`.
+</ResponseField>
+
+<ResponseField name="lines" type="LayoutLine[]">
+  One `LayoutLine` per wrapped line, in document order. Each entry contains the rendered text string, measured width, and start/end cursors.
+
+  <Expandable title="LayoutLine fields">
+    <ResponseField name="text" type="string">Rendered text content of this line.</ResponseField>
+    <ResponseField name="width" type="number">Measured width of this line in pixels.</ResponseField>
+    <ResponseField name="start" type="LayoutCursor">Inclusive start cursor.</ResponseField>
+    <ResponseField name="end" type="LayoutCursor">Exclusive end cursor.</ResponseField>
+  </Expandable>
+</ResponseField>
+
+```ts
+import { prepareWithSegments, layoutWithLines } from '@chenglou/pretext'
+
+const prepared = prepareWithSegments('AGI 春天到了. بدأت الرحلة 🚀', '18px "Helvetica Neue"')
+const { lines } = layoutWithLines(prepared, 320, 26)
+for (let i = 0; i < lines.length; i++) {
+  ctx.fillText(lines[i].text, 0, i * 26)
+}
+```
+
+</Accordion>
+
+</AccordionGroup>

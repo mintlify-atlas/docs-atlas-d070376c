@@ -1,0 +1,71 @@
+---
+title: "prepareWithSegments()"
+description: "Rich variant of prepare() that exposes segment data for manual line rendering."
+---
+
+`prepareWithSegments()` is identical to `prepare()` but returns a richer handle that includes the segment text array. Use it when you need to render lines yourself — on canvas, SVG, WebGL, or server-side — via `layoutWithLines()`, `walkLineRanges()`, or `layoutNextLine()`.
+
+```ts
+import { prepareWithSegments, layoutWithLines } from '@chenglou/pretext'
+
+const prepared = prepareWithSegments('AGI 春天到了. بدأت الرحلة 🚀', '18px "Helvetica Neue"')
+const { lines } = layoutWithLines(prepared, 320, 26)
+for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i].text, 0, i * 26)
+```
+
+## Signature
+
+```ts
+prepareWithSegments(text: string, font: string, options?: PrepareOptions): PreparedTextWithSegments
+```
+
+## Parameters
+
+<ParamField path="text" type="string" required>
+  The text string to measure. Whitespace is normalized according to the `whiteSpace` option (defaults to CSS `white-space: normal` behavior).
+</ParamField>
+
+<ParamField path="font" type="string" required>
+  CSS font shorthand in the same format as `canvasContext.font`. Must exactly match the CSS `font` declaration for the element being measured.
+
+  Examples: `"16px Inter"`, `"bold 14px Arial"`, `"italic 500 18px \"Helvetica Neue\""`.
+</ParamField>
+
+<ParamField path="options" type="PrepareOptions">
+  Optional configuration object. Same options as `prepare()`.
+
+  <Expandable title="properties">
+    <ParamField path="whiteSpace" type="'normal' | 'pre-wrap'" default="'normal'">
+      Controls whitespace handling.
+
+      - `'normal'` — collapses runs of spaces, ignores `\n` newlines (CSS `white-space: normal`).
+      - `'pre-wrap'` — preserves ordinary spaces, `\t` tabs, and `\n` hard breaks. Tabs follow the default browser `tab-size: 8`.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Returns
+
+<ResponseField name="PreparedTextWithSegments" type="object">
+  Extends `PreparedText` with an additional `segments` field.
+
+  <Expandable title="properties">
+    <ResponseField name="segments" type="string[]">
+      The segment text array aligned with the library's internal parallel arrays. For example, `['hello', ' ', 'world']`. Used internally by `layoutWithLines()`, `walkLineRanges()`, and `layoutNextLine()` to build line text strings.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## When to use
+
+Use `prepareWithSegments()` instead of `prepare()` when:
+
+- You need the text content of each laid-out line (for canvas `fillText`, SVG `<text>`, etc.) — use with `layoutWithLines()`.
+- You need per-line geometry without materializing strings (for shrinkwrap or binary-search layouts) — use with `walkLineRanges()`.
+- You need variable per-line widths (for text flowing around floated images) — use with `layoutNextLine()`.
+
+If you only need the total height or line count, use `prepare()` + `layout()` instead. The opaque handle is cheaper to produce.
+
+<Note>
+  `PreparedTextWithSegments` is the unstable escape hatch for experiments and custom rendering. Its internal shape may change between releases.
+</Note>

@@ -1,0 +1,39 @@
+---
+title: "clearCache()"
+description: "Clear Pretext's shared internal caches to free memory or reset state."
+---
+
+## Signature
+
+```ts
+clearCache(): void
+```
+
+## What gets cleared
+
+Calling `clearCache()` resets all of Pretext's shared internal state:
+
+- **Segment metrics cache** — the `Map<font, Map<segment, metrics>>` built up by `prepare()` and `prepareWithSegments()` calls across all fonts and text variants.
+- **Grapheme segmenter** — the hoisted `Intl.Segmenter` instance used for grapheme splitting.
+- **Line text caches** — the per-`PreparedTextWithSegments` grapheme string caches used internally by `layoutWithLines()` and `layoutNextLine()`.
+
+## When to call
+
+Call `clearCache()` when your app has cycled through many different fonts or large volumes of unique text and you want to release the accumulated heap.
+
+```ts
+import { clearCache } from '@chenglou/pretext'
+
+// After switching fonts in your app
+clearCache()
+```
+
+## When NOT to call
+
+<Warning>
+Do not call `clearCache()` inside a resize handler. The segment metrics cache is precisely what makes `layout()` fast — roughly 0.0002ms per text block. Clearing it on every resize forces `prepare()` to re-measure every segment from scratch on the next call.
+</Warning>
+
+## Relationship to `setLocale()`
+
+`setLocale()` calls `clearCache()` internally whenever the locale changes. You do not need to call both.

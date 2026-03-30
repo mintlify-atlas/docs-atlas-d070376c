@@ -1,0 +1,57 @@
+---
+title: "Predicting paragraph height"
+description: "Use prepare() and layout() to measure text height without touching the DOM."
+---
+
+DOM-based measurement — `getBoundingClientRect`, `offsetHeight` — forces a synchronous layout reflow every time you call it. When many components measure text independently, the interleaved reads and writes can cost 30ms or more per frame.
+
+Pretext replaces that with a two-phase model:
+
+- **`prepare()`** does the one-time work: normalize whitespace, segment the text, apply glue rules, measure segments with canvas, and return an opaque handle.
+- **`layout()`** is the cheap hot path after that: pure arithmetic over cached widths. No DOM reads, no canvas calls.
+
+## Basic usage
+
+```ts
+import { prepare, layout } from '@chenglou/pretext'
+
+const prepared = prepare('AGI 春天到了. بدأت الرحلة 🚀', '16px Inter')
+const { height, lineCount } = layout(prepared, textWidth, 20) // pure arithmetics. No DOM layout & reflow!
+```
+
+Call `prepare()` once when a text block first appears. Call `layout()` on every resize — the same `PreparedText` handle works at any `maxWidth` and `lineHeight`.
+
+## Pre-wrap mode
+
+If you're measuring textarea content or other text where spaces, tabs, and hard line breaks should be preserved, pass `{ whiteSpace: 'pre-wrap' }` to `prepare()`:
+
+```ts
+const prepared = prepare(textareaValue, '16px Inter', { whiteSpace: 'pre-wrap' })
+const { height } = layout(prepared, textareaWidth, 20)
+```
+
+In pre-wrap mode, ordinary spaces are preserved, `\t` tabs expand at 8-space stops, and `\n` hard breaks end the line. The other wrapping rules stay the same: `word-break: normal`, `overflow-wrap: break-word`, `line-break: auto`.
+
+## Practical use cases
+
+- **Virtualization without guesstimates.** Compute exact item heights before the list is ever rendered, so your virtual scroll viewport is always correct.
+- **Masonry layouts.** Place items in columns without a DOM pass — layout height is available synchronously.
+- **Prevent scroll anchor drift.** When new text loads and you want to re-anchor the scroll position, you need the new content's height before it's in the DOM.
+- **CI label overflow checks.** Verify at development time or in CI that button labels, badges, and other constrained text won't overflow — without opening a browser.
+
+## Performance
+
+On the current benchmark snapshot:
+
+- `prepare()` is about **19ms** for a shared 500-text batch
+- `layout()` is about **0.09ms** for that same batch
+
+The split exists precisely for resize performance. Prepare once; call `layout()` on every resize event, container query, or zoom change.
+
+<Note>
+The `font` argument must match the CSS `font` shorthand for the text you're measuring — including size, weight, style, and family. It uses the same format as `ctx.font` on a canvas context, for example `16px Inter` or `700 italic 14px "Helvetica Neue"`.
+</Note>
+
+<Note>
+The `lineHeight` argument to `layout()` must match the CSS `line-height` declaration for the same text. Pretext uses it to convert a line count to a pixel height: `height = lineCount * lineHeight`.
+</Note>

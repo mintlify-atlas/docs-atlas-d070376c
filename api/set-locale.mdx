@@ -1,0 +1,48 @@
+---
+title: "setLocale()"
+description: "Set the locale for Intl.Segmenter used in future prepare() calls."
+---
+
+## Signature
+
+```ts
+setLocale(locale?: string): void
+```
+
+## Parameters
+
+<ParamField path="locale" type="string">
+  Optional BCP 47 locale tag (e.g. `'ja'`, `'ar'`, `'zh-Hant'`). If omitted, Pretext resets to the runtime's default locale.
+</ParamField>
+
+## What it does
+
+`setLocale()` retargets the hoisted word segmenter used internally by `prepare()` and `prepareWithSegments()`. All subsequent calls to those functions will use the new locale for `Intl.Segmenter`-based word segmentation.
+
+It also calls `clearCache()` internally, so the old segment metrics and grapheme caches are discarded. This ensures stale measurements from a previous locale do not bleed into new results.
+
+## Important: existing handles are not affected
+
+Setting a new locale does **not** mutate any `PreparedText` or `PreparedTextWithSegments` handles that were created before the call. Those handles remain valid and continue to produce correct layout results for the font and locale they were prepared under.
+
+## When to call
+
+Call `setLocale()` once, before your first `prepare()` call in a session, when you want a specific locale rather than the runtime default:
+
+```ts
+import { setLocale, prepare, layout } from '@chenglou/pretext'
+
+setLocale('ja') // Japanese word segmentation
+const prepared = prepare('AGI 春天到了', '16px Inter')
+const { height } = layout(prepared, 320, 24)
+```
+
+To reset back to the runtime default locale:
+
+```ts
+setLocale() // no argument — resets to runtime default
+```
+
+## Relationship to `clearCache()`
+
+`setLocale()` calls `clearCache()` internally when the locale changes. You do not need to call `clearCache()` separately after `setLocale()`.

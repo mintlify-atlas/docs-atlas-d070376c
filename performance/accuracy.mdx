@@ -1,0 +1,58 @@
+---
+title: "Accuracy"
+description: "How Pretext validates against real browser layout and current accuracy status."
+---
+
+## What "accuracy" means
+
+Accuracy measures whether Pretext's predicted height for a text block matches the real DOM height that a browser would produce for the same text, font, and container width.
+
+For each test case, Pretext runs `prepare()` followed by `layout()` and compares the resulting `height` against the height produced by the browser's own layout engine for an equivalent DOM element. A case is correct when the heights agree within the line-fit tolerance.
+
+## Current status
+
+| Browser | Status |
+|---------|--------|
+| Chrome  | `7680/7680` |
+| Safari  | `7680/7680` |
+| Firefox | `7680/7680` |
+
+These snapshots were captured on 2026-03-27.
+
+<Note>
+Machine-readable accuracy snapshots are checked in as `accuracy/chrome.json`, `accuracy/safari.json`, and `accuracy/firefox.json`. The public accuracy page is effectively a regression gate — it confirms no regressions against those snapshots.
+</Note>
+
+## The test corpus
+
+The browser sweep uses a **4-font × 8-size × 8-width × 30-text** corpus, producing 7,680 test cases per browser.
+
+- **4 fonts** — a representative set of named fonts (not `system-ui`)
+- **8 sizes** — spanning typical UI text sizes
+- **8 widths** — from narrow to wide container widths
+- **30 texts** — a mix of scripts, emoji, mixed-bidi, and edge-case strings drawn from `src/test-data.ts`
+
+Each combination is an independent case. The sweep runs in the browser against the live DOM, so it captures actual font rendering, not approximations.
+
+## Line-fit tolerance
+
+Not every height difference represents a real error. Browsers accumulate floating-point rounding across line widths, and the threshold for whether a word fits on a line varies slightly by engine. Pretext uses engine-specific tolerances:
+
+- **Chromium / Gecko:** `0.005` (pixels)
+- **Safari / WebKit:** `1/64` (pixels)
+
+A height prediction is considered correct if the line-count decision it produces matches the browser's line count within these tolerances.
+
+## Emoji correction
+
+Canvas `measureText` reports emoji wider than the DOM renders them at font sizes below 24px on macOS (Apple Color Emoji). The inflation is constant per emoji grapheme at a given size and is font-independent. Pretext auto-detects this correction by comparing canvas vs. DOM emoji width once per font, caches the result, and applies it to all subsequent emoji measurements for that font.
+
+Safari canvas and DOM agree on emoji width (both report wider than `fontSize`), so the correction value is `0` on Safari.
+
+## system-ui caveat
+
+`system-ui` is not safe to use with Pretext for accuracy-sensitive work on macOS. The canvas context and the DOM can resolve `system-ui` to different optical variants of the system font, producing systematically different width measurements. Use a named font (e.g. `Inter`, `Helvetica`, `-apple-system`) to guarantee that canvas and DOM measure the same glyphs.
+
+## Refreshing snapshots
+
+Refresh `accuracy/chrome.json`, `accuracy/safari.json`, and `accuracy/firefox.json` when a change affects the browser sweep methodology or the main text engine behavior (`src/analysis.ts`, `src/measurement.ts`, `src/line-break.ts`, `src/layout.ts`, `src/bidi.ts`, or `pages/accuracy.ts`).

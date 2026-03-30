@@ -1,97 +1,56 @@
 ---
-title: "Introduction"
-description: "Welcome to the new home for your documentation"
+title: "Pretext"
+description: "Fast, accurate multiline text measurement and layout for the browser — no DOM reflow required."
 ---
 
-## Setting up
+Pretext is a pure JavaScript/TypeScript library that measures text height and lays out paragraphs without touching the DOM. Instead of triggering expensive layout reflows via `getBoundingClientRect` or `offsetHeight`, Pretext uses canvas `measureText` with cached segment widths so your resize logic stays under a millisecond.
 
-Get your documentation site up and running in minutes.
-
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
-</Card>
-
-## Make it yours
-
-Design a docs site that looks great and empowers your users.
-
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
+<CardGroup cols={2}>
+  <Card title="Installation" icon="box" href="/installation">
+    Install via npm and get up and running in minutes.
   </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Measure your first paragraph height with a working code example.
   </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
+  <Card title="API Reference" icon="code" href="/api/prepare">
+    Full reference for every exported function and type.
   </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
+  <Card title="Core Concepts" icon="book" href="/concepts/how-it-works">
+    Understand the two-phase architecture and why it's fast.
   </Card>
-</Columns>
+</CardGroup>
 
-## Create beautiful pages
+## Why Pretext?
 
-Everything you need to create world-class documentation.
+DOM-based text measurement forces synchronous layout reflow. When many components independently call `getBoundingClientRect` or `offsetHeight`, each read triggers a full document reflow — easily costing 30ms+ per frame for 500 text blocks.
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
+Pretext solves this with a two-phase approach:
 
-## Need inspiration?
+<Steps>
+  <Step title="Prepare once">
+    Call `prepare(text, font)` when text first appears. It segments the text, measures each word via canvas, caches widths, and returns an opaque handle. About `19ms` for a batch of 500 texts.
+  </Step>
+  <Step title="Layout on every resize">
+    Call `layout(prepared, maxWidth, lineHeight)` on every resize event. Pure arithmetic over cached widths — no canvas, no DOM, no allocations. About `0.09ms` for the same 500-text batch.
+  </Step>
+  <Step title="Render with full control">
+    Use the rich line APIs (`layoutWithLines`, `layoutNextLine`, `walkLineRanges`) to render to Canvas, SVG, WebGL, or any custom engine.
+  </Step>
+</Steps>
 
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+## Key features
+
+<CardGroup cols={2}>
+  <Card title="Zero DOM reads" icon="ban">
+    No `getBoundingClientRect`, no `offsetHeight`, no layout reflow. Text measurement happens entirely in JavaScript.
+  </Card>
+  <Card title="All languages" icon="globe">
+    CJK per-character breaking, Arabic bidi, Thai word segmentation, emoji correction, and mixed-script punctuation rules.
+  </Card>
+  <Card title="Browser-accurate" icon="circle-check">
+    Validated against Chrome, Safari, and Firefox with a 7,680-case regression suite — currently `7680/7680` on all three.
+  </Card>
+  <Card title="Rich layout APIs" icon="layer-group">
+    From simple height prediction to line-by-line streaming with variable widths — covering virtualization, masonry, text wrapping around floats, and shrinkwrap layouts.
+  </Card>
+</CardGroup>

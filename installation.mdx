@@ -1,0 +1,55 @@
+---
+title: "Installation"
+description: "Install Pretext via npm, yarn, or pnpm."
+---
+
+## Install the package
+
+The npm package name is `@chenglou/pretext`.
+
+<CodeGroup>
+
+```bash npm
+npm install @chenglou/pretext
+```
+
+```bash yarn
+yarn add @chenglou/pretext
+```
+
+```bash pnpm
+pnpm add @chenglou/pretext
+```
+
+</CodeGroup>
+
+## Import the named exports
+
+```ts
+import { prepare, layout, prepareWithSegments, layoutWithLines, layoutNextLine, walkLineRanges, clearCache, setLocale } from '@chenglou/pretext'
+```
+
+You only need to import the functions relevant to your use case. For height prediction, `prepare` and `layout` are sufficient. For manual rendering, also import `prepareWithSegments` and one of the line layout functions.
+
+## TypeScript support
+
+Pretext ships declaration files automatically as of version `0.0.3`. No `@types/` package or additional configuration is required — TypeScript consumers pick up the types directly from the published package.
+
+## ESM-only package
+
+<Note>
+  Pretext is an ESM-only package (`"type": "module"` in `package.json`). It is distributed as built JavaScript from `dist/layout.js` with matching declaration files. CommonJS `require()` is not supported.
+</Note>
+
+If your bundler or runtime requires CJS interop, use a dynamic `import()` or configure your build tool to handle ESM dependencies.
+
+## Browser environment requirement
+
+<Warning>
+  Pretext requires a browser environment. It uses two browser-only APIs that are not available in Node.js without polyfills:
+
+  - **`canvas.measureText`** — used by `prepare()` and `prepareWithSegments()` to measure segment widths against the real font engine.
+  - **`Intl.Segmenter`** — used to segment text into words and graphemes for CJK, Thai, Arabic, and other scripts.
+</Warning>
+
+Server-side rendering support is planned for a future release. For now, call `prepare()` in the browser, after fonts have loaded.

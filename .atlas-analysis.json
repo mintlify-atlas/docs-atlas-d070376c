@@ -1,0 +1,88 @@
+{
+  "projectType": "sdk-library",
+  "projectName": "Pretext",
+  "projectDescription": "A pure JavaScript/TypeScript library for fast, accurate multiline text measurement and layout without DOM reflow, supporting all languages including CJK, Arabic, Thai, and emoji.",
+  "theme": "luma",
+  "primaryColor": "#5C6BC0",
+  "lightColor": "#E8EAF6",
+  "darkColor": "#283593",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": ["introduction", "installation", "quickstart"]
+          },
+          {
+            "group": "Core Concepts",
+            "pages": ["concepts/how-it-works", "concepts/text-measurement", "concepts/line-breaking"]
+          },
+          {
+            "group": "Guides",
+            "pages": [
+              "guides/height-prediction",
+              "guides/manual-layout",
+              "guides/variable-width-layout",
+              "guides/whitespace-modes",
+              "guides/internationalization"
+            ]
+          },
+          {
+            "group": "Performance",
+            "pages": ["performance/benchmarks", "performance/caching", "performance/accuracy"]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Core API",
+            "pages": [
+              "api/prepare",
+              "api/layout",
+              "api/prepare-with-segments",
+              "api/layout-with-lines",
+              "api/walk-line-ranges",
+              "api/layout-next-line"
+            ]
+          },
+          {
+            "group": "Utilities",
+            "pages": ["api/clear-cache", "api/set-locale", "api/types"]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "DOM-free text height measurement — no layout reflow",
+    "Fast two-phase API: prepare() once, layout() on every resize (~0.0002ms)",
+    "Full internationalization: CJK, Arabic (bidi), Thai, emoji, mixed scripts",
+    "Rich layout APIs for canvas, SVG, and WebGL rendering",
+    "overflow-wrap: break-word support with grapheme-level word breaking",
+    "pre-wrap mode for textarea-like preserved whitespace and tabs",
+    "Browser-accurate line breaking validated against Chrome, Safari, and Firefox",
+    "Shared segment metrics cache for batched text measurement"
+  ],
+  "publicApiSurface": [
+    "prepare(text: string, font: string, options?: PrepareOptions): PreparedText",
+    "layout(prepared: PreparedText, maxWidth: number, lineHeight: number): LayoutResult",
+    "prepareWithSegments(text: string, font: string, options?: PrepareOptions): PreparedTextWithSegments",
+    "layoutWithLines(prepared: PreparedTextWithSegments, maxWidth: number, lineHeight: number): LayoutLinesResult",
+    "walkLineRanges(prepared: PreparedTextWithSegments, maxWidth: number, onLine: (line: LayoutLineRange) => void): number",
+    "layoutNextLine(prepared: PreparedTextWithSegments, start: LayoutCursor, maxWidth: number): LayoutLine | null",
+    "clearCache(): void",
+    "setLocale(locale?: string): void",
+    "type PreparedText",
+    "type PreparedTextWithSegments",
+    "type LayoutCursor",
+    "type LayoutResult",
+    "type LayoutLine",
+    "type LayoutLineRange",
+    "type LayoutLinesResult",
+    "type PrepareOptions"
+  ]
+}

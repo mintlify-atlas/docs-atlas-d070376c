@@ -1,0 +1,116 @@
+---
+title: "Text measurement"
+description: "How Pretext measures text segments using canvas and handles browser-specific quirks."
+---
+
+## Canvas as the measurement oracle
+
+Pretext uses `canvas.measureText()` to measure every text segment during `prepare()`. The canvas font engine is the same one the browser uses to lay out DOM text, so the widths are accurate without any DOM reads.
+
+The context is obtained in order of preference:
+
+1. `OffscreenCanvas` (available in workers)
+2. `document.createElement('canvas')` (requires a DOM environment)
+
+For server-side use, canvas measurement is not available. SSR support is on the roadmap.
+
+## The font string format
+
+The `font` parameter to `prepare()` and `prepareWithSegments()` uses the same format as `CanvasRenderingContext2D.font`. It is a CSS font shorthand that must include at least a size and a family:
+
+```ts
+prepare(text, '16px Inter')
+prepare(text, '18px "Helvetica Neue"')
+prepare(text, 'bold 14px system-ui')
+```
+
+Make sure this string matches the `font` CSS declaration on the DOM element you are measuring. Pretext caches measurements per font string, so `"16px Inter"` and `"16px  Inter"` (extra space) are treated as different fonts.
+
+<Warning>
+`system-ui` is unsafe for accuracy on macOS. The canvas and DOM resolve `system-ui` to different optical variants at certain font sizes — SF Pro Text at smaller sizes, SF Pro Display at larger sizes — and they switch thresholds at different sizes. Use a named font like `Helvetica`, `Inter`, or `Georgia` for guaranteed accuracy.
+</Warning>
+
+## Emoji correction
+
+On macOS, Chrome and Firefox measure emoji **wider in canvas than in the DOM** at font sizes below 24px, due to how Apple Color Emoji is handled. This means naively using the canvas width would make emoji appear to take up more space than they actually do, causing lines to wrap earlier than the browser would.
+
+Pretext auto-detects and corrects for this:
+
+1. At `prepare()` time, if the text may contain emoji, Pretext compares the canvas width of a reference emoji (`😀`) against its actual DOM width using a single hidden `span`.
+2. The per-emoji inflation is constant at a given font size and independent of the specific font family, so the correction value is cached by font string.
+3. During measurement, the correction is subtracted from each emoji grapheme's canvas width.
+
+Safari does not share this discrepancy — its canvas and DOM emoji widths agree — so no correction is applied there.
+
+This DOM read happens **at most once per unique font string**, and only when the text may contain emoji. It is not in the `layout()` hot path.
+
+## Segment metrics cache
+
+Measurements are cached at two levels:
+
+| Level | Key | Value |
+|-------|-----|-------|
+| Font cache | font string | per-segment metrics map |
+| Segment cache | segment text | width, grapheme widths, emoji correction |
+
+Each cache entry holds the canvas-measured width of the segment plus any lazily-computed per-grapheme widths needed for `overflow-wrap: break-word` splitting. On Safari, prefix widths are also stored to match WebKit's approach to partial-word advance measurement.
+
+The cache is shared across all texts prepared with the same font string and persists for the lifetime of the page. Call `clearCache()` to release it:
+
+```ts
+import { clearCache } from '@chenglou/pretext'
+
+clearCache()
+```
+
+## Grapheme widths for overflow-wrap
+
+For word-like segments longer than one character, `prepare()` also pre-measures the width of each individual grapheme. These widths are used when a word is wider than `maxWidth` and must be broken at grapheme boundaries (`overflow-wrap: break-word`).
+
+On Safari, Pretext additionally stores **cumulative prefix widths** (the width of the first N graphemes measured together as a prefix string, not as a sum of individuals). This matches how WebKit measures partial-word advances when deciding where to break.
+
+## CSS target
+
+Pretext currently targets the common app-text configuration:
+
+| Property | Value |
+|----------|-------|
+| `white-space` | `normal` |
+| `word-break` | `normal` |
+| `overflow-wrap` | `break-word` |
+| `line-break` | `auto` |
+
+Pass `{ whiteSpace: 'pre-wrap' }` to `prepare()` for textarea-like text, where ordinary spaces, `\t` tabs, and `\n` hard breaks are preserved:
+
+```ts
+const prepared = prepare(textareaValue, '16px Inter', { whiteSpace: 'pre-wrap' })
+```
+
+In `pre-wrap` mode, tabs follow default browser tab stops (`tab-size: 8`). The other wrapping defaults stay the same.
+
+## Supported scripts and features
+
+<AccordionGroup>
+  <Accordion title="CJK (Chinese, Japanese, Korean)">
+    CJK text is split into individual graphemes during `prepare()`, since any position between CJK characters is a valid line-break opportunity. Kinsoku rules are applied to prevent prohibited characters from appearing at the start or end of a line — for example, closing brackets and punctuation like `、` and `。` are kept attached to the preceding grapheme.
+
+    Astral CJK ideographs (extensions B through F, compatibility ideographs) are fully supported using code-point-aware detection, not `charCodeAt()`.
+  </Accordion>
+  <Accordion title="Arabic and bidi">
+    Arabic preprocessing handles two known browser behavior classes:
+
+    - **No-space punctuation clusters**: Arabic text that omits spaces around punctuation (e.g. `فيقول:وعليك`) is merged into a single segment during `prepare()`, preventing incorrect breaks at the punctuation.
+    - **Space + combining marks before Arabic**: A space followed by combining marks before Arabic text is split so the marks attach to the following word, not the space.
+
+    The rich `prepareWithSegments()` path includes bidi level metadata for custom renderers that need to handle mixed LTR/RTL text.
+  </Accordion>
+  <Accordion title="Thai, Khmer, and other Southeast Asian scripts">
+    `Intl.Segmenter` handles word segmentation for Thai, Khmer, and other scripts that do not use spaces as word boundaries. Pretext does not implement its own dictionary-based segmenter; it delegates to the browser's built-in implementation via the Web API.
+  </Accordion>
+  <Accordion title="Emoji">
+    Emoji are measured per grapheme cluster (a multi-codepoint sequence like `👨‍👩‍👧` counts as one grapheme). Emoji correction is applied on platforms where canvas and DOM widths diverge. See the [Emoji correction](#emoji-correction) section above.
+  </Accordion>
+  <Accordion title="Mixed-script text">
+    Text mixing multiple scripts — for example, `AGI 春天到了. بدأت الرحلة 🚀` — is handled by combining `Intl.Segmenter` word segmentation with script-specific preprocessing passes for CJK grapheme splitting and Arabic punctuation merging.
+  </Accordion>
+</AccordionGroup>

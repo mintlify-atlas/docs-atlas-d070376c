@@ -1,0 +1,63 @@
+---
+title: "Caching"
+description: "How Pretext caches segment widths and how to manage cache lifecycle."
+---
+
+## How the cache works
+
+Pretext maintains a two-level segment metrics cache:
+
+```
+Map<font, Map<segment, metrics>>
+```
+
+The outer key is the font string (e.g. `"16px Inter"`). The inner key is the segment text. Each entry stores the metrics measured for that segment at that font — including segment width, per-grapheme widths for `overflow-wrap: break-word` segments, and emoji correction values.
+
+What gets cached per `(segment, font)` entry:
+
+- **Segment width** — the canvas `measureText` result for the full segment
+- **Grapheme widths** — individual grapheme widths for word segments that may need mid-word breaking
+- **Emoji correction** — one cached DOM read per font, used to correct canvas emoji inflation at small sizes
+
+The cache is shared across all `prepare()` and `prepareWithSegments()` calls that use the same font. Once a segment has been measured, subsequent `prepare()` calls reuse the cached result with no canvas or DOM work.
+
+## clearCache()
+
+Call `clearCache()` to release all cached metrics. This is useful if your app cycles through many different fonts over time and you want to reclaim the accumulated memory.
+
+```ts
+import { clearCache } from '@chenglou/pretext'
+
+clearCache()
+```
+
+After `clearCache()`, the next `prepare()` call for any font will re-measure from scratch.
+
+<Warning>
+Do not call `clearCache()` in a resize handler. The segment metrics cache is precisely what makes `layout()` fast — it holds all the pre-measured widths that `layout()` reads without touching canvas or DOM. Clearing it on resize discards those widths and forces `prepare()` to re-measure everything before `layout()` can run again.
+</Warning>
+
+## setLocale() and the cache
+
+`setLocale(locale?)` retargets the word segmenter used by future `prepare()` calls for a different `Intl.Segmenter` locale. Internally, it calls `clearCache()` as part of that reset.
+
+```ts
+import { setLocale } from '@chenglou/pretext'
+
+setLocale('ja') // sets Japanese locale for future prepare() calls
+```
+
+<Warning>
+Because `setLocale()` clears the cache, call it before the first `prepare()` call in your session. Calling it mid-session discards all cached measurements and forces re-measurement on the next `prepare()`.
+</Warning>
+
+## Memory considerations
+
+The cache grows as you prepare unique `(segment, font)` pairs. For apps that display a bounded set of fonts and natural-language text, the cache reaches a stable size quickly — most words recur across texts.
+
+The cache can grow unboundedly if your app:
+
+- Cycles through many different font strings (different sizes, weights, families)
+- Prepares a large number of unique technical strings with little repetition
+
+In those cases, call `clearCache()` at a natural transition point (e.g. after a font settings change) to release accumulated memory.

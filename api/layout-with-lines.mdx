@@ -1,0 +1,101 @@
+---
+title: "layoutWithLines()"
+description: "Lay out a paragraph and get the text content and width of each line."
+---
+
+`layoutWithLines()` lays out a paragraph at a fixed max width and returns the text and measured width of each line, along with the total line count and height. Use it when you need the actual line contents for rendering.
+
+```ts
+import { prepareWithSegments, layoutWithLines } from '@chenglou/pretext'
+
+const prepared = prepareWithSegments('AGI 春天到了. بدأت الرحلة 🚀', '18px "Helvetica Neue"')
+const { lines } = layoutWithLines(prepared, 320, 26) // 320px max width, 26px line height
+for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i].text, 0, i * 26)
+```
+
+## Signature
+
+```ts
+layoutWithLines(
+  prepared: PreparedTextWithSegments,
+  maxWidth: number,
+  lineHeight: number
+): LayoutLinesResult
+```
+
+## Parameters
+
+<ParamField path="prepared" type="PreparedTextWithSegments" required>
+  The handle returned by `prepareWithSegments()`. Must be the segment-aware variant — the plain `PreparedText` from `prepare()` is not accepted here.
+</ParamField>
+
+<ParamField path="maxWidth" type="number" required>
+  Maximum line width in pixels. All lines use the same width. Use `layoutNextLine()` if you need variable widths per line.
+</ParamField>
+
+<ParamField path="lineHeight" type="number" required>
+  Line height in pixels. Must match the CSS `line-height` for the element. The returned `height` is `lineCount * lineHeight`.
+</ParamField>
+
+## Returns
+
+<ResponseField name="lineCount" type="number" required>
+  Number of wrapped lines.
+</ResponseField>
+
+<ResponseField name="height" type="number" required>
+  Total block height in pixels. Equal to `lineCount * lineHeight`.
+</ResponseField>
+
+<ResponseField name="lines" type="LayoutLine[]" required>
+  Array of per-line objects, one per wrapped line.
+
+  <Expandable title="LayoutLine properties">
+    <ResponseField name="text" type="string" required>
+      Full text content of this line, e.g. `'hello world'`.
+    </ResponseField>
+    <ResponseField name="width" type="number" required>
+      Measured width of this line in pixels, e.g. `87.5`.
+    </ResponseField>
+    <ResponseField name="start" type="LayoutCursor" required>
+      Inclusive start cursor for this line in the prepared segment stream.
+
+      <Expandable title="LayoutCursor properties">
+        <ResponseField name="segmentIndex" type="number" required>
+          Segment index within `prepared.segments`.
+        </ResponseField>
+        <ResponseField name="graphemeIndex" type="number" required>
+          Grapheme index within that segment. `0` at segment boundaries.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+    <ResponseField name="end" type="LayoutCursor" required>
+      Exclusive end cursor for this line. Pass as `start` to `layoutNextLine()` to step line by line.
+
+      <Expandable title="LayoutCursor properties">
+        <ResponseField name="segmentIndex" type="number" required>
+          Segment index within `prepared.segments`.
+        </ResponseField>
+        <ResponseField name="graphemeIndex" type="number" required>
+          Grapheme index within that segment. `0` at segment boundaries.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## layout() vs layoutWithLines()
+
+| | `layout()` | `layoutWithLines()` |
+|---|---|---|
+| Input | `PreparedText` | `PreparedTextWithSegments` |
+| Returns line text | No | Yes |
+| Returns line widths | No | Yes |
+| Returns cursors | No | Yes |
+| Resize hot path | Yes | No — keep off the hot path |
+
+Use `layout()` when you only need the height. Use `layoutWithLines()` when you need to render the line contents.
+
+<Tip>
+  For shrinkwrap layouts or binary-search over widths, prefer `walkLineRanges()` — it avoids building the line text strings and is faster for geometry-only work.
+</Tip>

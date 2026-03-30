@@ -1,0 +1,72 @@
+---
+title: "Introduction"
+description: "Pretext is a pure JavaScript/TypeScript library for fast, accurate multiline text measurement and layout — without DOM reflow."
+---
+
+## What is Pretext?
+
+Pretext measures text height and lays out paragraphs without ever reading from the DOM. Instead of triggering synchronous layout reflows via `getBoundingClientRect` or `offsetHeight`, it uses the browser's own canvas `measureText` engine with cached segment widths so your resize logic stays well under a millisecond.
+
+## The problem: DOM reflow is expensive
+
+When components independently call `getBoundingClientRect` or `offsetHeight` to measure text, each read forces the browser to perform a synchronous layout reflow of the entire document. This read/write interleaving compounds quickly — for 500 text blocks, the cost can reach **30ms or more per frame**.
+
+Pretext sidesteps this entirely. Text measurement is pure JavaScript arithmetic over pre-measured word widths, with no DOM involvement after the initial setup.
+
+## Two use cases
+
+### 1. Measure paragraph height without touching the DOM
+
+Use `prepare()` + `layout()` to find out how tall a block of text will be at a given width. Useful for virtualization, masonry layouts, scroll anchoring, and development-time overflow checks.
+
+```ts
+import { prepare, layout } from '@chenglou/pretext'
+
+const prepared = prepare('AGI 春天到了. بدأت الرحلة 🚀', '16px Inter')
+const { height, lineCount } = layout(prepared, textWidth, 20) // pure arithmetic. No DOM layout & reflow!
+```
+
+`prepare()` does the one-time work: normalize whitespace, segment the text, apply glue rules, measure the segments with canvas, and return an opaque handle. `layout()` is the cheap hot path after that: pure arithmetic over cached widths. On the current benchmark snapshot, `prepare()` takes about `19ms` for a batch of 500 texts, while `layout()` takes about `0.09ms` for the same batch.
+
+### 2. Lay out lines manually for canvas, SVG, or WebGL rendering
+
+Use `prepareWithSegments()` + `layoutWithLines()` or `layoutNextLine()` to get the actual line strings and widths for rendering directly to a canvas or other surface.
+
+```ts
+import { prepareWithSegments, layoutWithLines } from '@chenglou/pretext'
+
+const prepared = prepareWithSegments('AGI 春天到了. بدأت الرحلة 🚀', '18px "Helvetica Neue"')
+const { lines } = layoutWithLines(prepared, 320, 26) // 320px max width, 26px line height
+for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i].text, 0, i * 26)
+```
+
+## CSS configuration
+
+Pretext targets the most common text setup:
+
+- `white-space: normal`
+- `word-break: normal`
+- `overflow-wrap: break-word`
+- `line-break: auto`
+
+If you need textarea-like text where ordinary spaces, `\t` tabs, and `\n` hard breaks are preserved instead of collapsed, pass `{ whiteSpace: 'pre-wrap' }` to `prepare()` or `prepareWithSegments()`.
+
+## Caveats
+
+<Warning>
+  `system-ui` is unsafe for `layout()` accuracy on macOS. The canvas and DOM can resolve to different optical font variants, causing width discrepancies. Use a named font such as `Inter`, `Helvetica`, or `Georgia` instead.
+</Warning>
+
+- Because the default target includes `overflow-wrap: break-word`, very narrow widths can still break inside words, but only at grapheme boundaries.
+- Pretext requires a browser environment. It uses canvas `measureText` and `Intl.Segmenter`, neither of which are available in Node.js without polyfills.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Installation" icon="box" href="/installation">
+    Install the package and import your first named exports.
+  </Card>
+  <Card title="Quickstart" icon="rocket" href="/quickstart">
+    Measure your first paragraph height in under a minute.
+  </Card>
+</CardGroup>

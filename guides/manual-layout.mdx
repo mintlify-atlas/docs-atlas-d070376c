@@ -1,0 +1,84 @@
+---
+title: "Manual line layout"
+description: "Use prepareWithSegments and layoutWithLines to render text to canvas, SVG, or WebGL."
+---
+
+The simple `prepare()` + `layout()` path gives you height and line count — enough for virtualization and scroll anchoring. When you need to render the text yourself (canvas, SVG, WebGL, or a custom DOM layer), you need the actual line strings and their widths too.
+
+Switch from `prepare()` to `prepareWithSegments()`, then use `layoutWithLines()` or `walkLineRanges()` depending on what you need.
+
+## When to use the rich layout path
+
+Use `prepareWithSegments` + `layoutWithLines` when you:
+
+- Render text to a canvas context with `ctx.fillText`
+- Build SVG `<text>` elements manually
+- Drive a WebGL text renderer
+- Need per-line width data for alignment or truncation
+
+Use the simpler `prepare` + `layout` path when you only need the paragraph height or line count (for example, for virtualization or scroll anchoring).
+
+## layoutWithLines vs walkLineRanges
+
+<Tabs>
+  <Tab title="layoutWithLines">
+    `layoutWithLines` lays out every line and materializes the text string for each one. Use it when you need to render or inspect the line content.
+
+    ```ts
+    import { prepareWithSegments, layoutWithLines } from '@chenglou/pretext'
+
+    const prepared = prepareWithSegments('AGI 春天到了. بدأت الرحلة 🚀', '18px "Helvetica Neue"')
+    const { lines } = layoutWithLines(prepared, 320, 26) // 320px max width, 26px line height
+    for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i].text, 0, i * 26)
+    ```
+
+    Each entry in `lines` is a `LayoutLine`:
+
+    ```ts
+    type LayoutLine = {
+      text: string        // Full text content of this line, e.g. 'hello world'
+      width: number       // Measured width of this line, e.g. 87.5
+      start: LayoutCursor // Inclusive start cursor in prepared segments/graphemes
+      end: LayoutCursor   // Exclusive end cursor in prepared segments/graphemes
+    }
+    ```
+  </Tab>
+  <Tab title="walkLineRanges">
+    `walkLineRanges` walks each line without building the text strings. It gives you line widths and cursors only. This is faster when you're doing geometry work — for example, finding the minimum container width that still fits the text.
+
+    ```ts
+    let maxW = 0
+    walkLineRanges(prepared, 320, line => { if (line.width > maxW) maxW = line.width })
+    // maxW is now the widest line — the tightest container width that still fits the text!
+    ```
+
+    Each callback receives a `LayoutLineRange`:
+
+    ```ts
+    type LayoutLineRange = {
+      width: number       // Measured width of this line, e.g. 87.5
+      start: LayoutCursor // Inclusive start cursor in prepared segments/graphemes
+      end: LayoutCursor   // Exclusive end cursor in prepared segments/graphemes
+    }
+    ```
+
+    `LayoutLineRange` is identical to `LayoutLine` except it does not carry the `text` string. No string materialization happens during the walk.
+  </Tab>
+</Tabs>
+
+## The LayoutCursor type
+
+Both `LayoutLine` and `LayoutLineRange` carry `start` and `end` cursors:
+
+```ts
+type LayoutCursor = {
+  segmentIndex: number  // Segment index in prepareWithSegments' prepared rich segment stream
+  graphemeIndex: number // Grapheme index within that segment; 0 at segment boundaries
+}
+```
+
+These cursors let you pass a line's `end` position as the `start` for the next call to `layoutNextLine()`, enabling streaming or variable-width layouts. See [Variable-width layout](/guides/variable-width-layout) for details.
+
+<Tip>
+Prefer `walkLineRanges` for binary-search width-fitting or aggregate geometry work — it avoids building line strings on every probe. Once you've found the width you want, call `layoutWithLines` once with that final width to get the rendered lines.
+</Tip>

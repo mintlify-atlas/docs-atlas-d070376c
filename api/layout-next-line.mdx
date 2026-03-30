@@ -1,0 +1,118 @@
+---
+title: "layoutNextLine()"
+description: "Step through a paragraph one line at a time with variable widths per line."
+---
+
+`layoutNextLine()` is an iterator-style API that lays out one line at a time, accepting a different `maxWidth` for each line. Use it when the available width changes as you descend through the paragraph — for example, when text flows around a floated image or fills a multi-column editorial layout.
+
+```ts
+import { prepareWithSegments, layoutNextLine } from '@chenglou/pretext'
+
+const prepared = prepareWithSegments(articleText, '16px Inter')
+
+let cursor = { segmentIndex: 0, graphemeIndex: 0 }
+let y = 0
+
+// Flow text around a floated image: lines beside the image are narrower
+while (true) {
+  const width = y < image.bottom ? columnWidth - image.width : columnWidth
+  const line = layoutNextLine(prepared, cursor, width)
+  if (line === null) break
+  ctx.fillText(line.text, 0, y)
+  cursor = line.end
+  y += 26
+}
+```
+
+## Signature
+
+```ts
+layoutNextLine(
+  prepared: PreparedTextWithSegments,
+  start: LayoutCursor,
+  maxWidth: number
+): LayoutLine | null
+```
+
+## Parameters
+
+<ParamField path="prepared" type="PreparedTextWithSegments" required>
+  The handle returned by `prepareWithSegments()`.
+</ParamField>
+
+<ParamField path="start" type="LayoutCursor" required>
+  Cursor marking where to start the next line. For the first line, pass `{ segmentIndex: 0, graphemeIndex: 0 }`. For subsequent lines, pass the previous line's `end` cursor.
+
+  <Expandable title="LayoutCursor properties">
+    <ResponseField name="segmentIndex" type="number" required>
+      Segment index within `prepared.segments`.
+    </ResponseField>
+    <ResponseField name="graphemeIndex" type="number" required>
+      Grapheme index within that segment. `0` at segment boundaries.
+    </ResponseField>
+  </Expandable>
+</ParamField>
+
+<ParamField path="maxWidth" type="number" required>
+  Maximum width for **this specific line** in pixels. Can differ on every call — this is the key capability that distinguishes `layoutNextLine()` from `layoutWithLines()`.
+</ParamField>
+
+## Returns
+
+<ResponseField name="LayoutLine | null" type="object">
+  A `LayoutLine` object for the current line, or `null` when the paragraph is exhausted (no more text to lay out).
+
+  <Expandable title="LayoutLine properties">
+    <ResponseField name="text" type="string" required>
+      Full text content of this line, e.g. `'hello world'`.
+    </ResponseField>
+    <ResponseField name="width" type="number" required>
+      Measured width of this line in pixels.
+    </ResponseField>
+    <ResponseField name="start" type="LayoutCursor" required>
+      Inclusive start cursor for this line.
+    </ResponseField>
+    <ResponseField name="end" type="LayoutCursor" required>
+      Exclusive end cursor for this line. Pass this as `start` in the next `layoutNextLine()` call.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Pattern: advance the cursor
+
+The core loop pattern is:
+
+1. Call `layoutNextLine(prepared, cursor, width)` with the current cursor and the width available for this line.
+2. If the return value is `null`, the paragraph is done — exit the loop.
+3. Render the line.
+4. Set `cursor = line.end` and advance your `y` position.
+5. Repeat, computing a new `width` for the next line.
+
+```ts
+let cursor = { segmentIndex: 0, graphemeIndex: 0 }
+let y = 0
+
+while (true) {
+  const width = y < image.bottom ? columnWidth - image.width : columnWidth
+  const line = layoutNextLine(prepared, cursor, width)
+  if (line === null) break
+  ctx.fillText(line.text, 0, y)
+  cursor = line.end
+  y += 26
+}
+```
+
+## When to use
+
+| Scenario | Recommended API |
+|---|---|
+| Fixed width, need height only | `layout()` |
+| Fixed width, need line text | `layoutWithLines()` |
+| Geometry-only, probe multiple widths | `walkLineRanges()` |
+| Variable width per line | `layoutNextLine()` |
+
+Use `layoutNextLine()` for:
+
+- Text flowing around floated images or other obstacles.
+- Multi-column editorial layouts where column width changes at a fold.
+- Any custom layout engine where the available line width is computed dynamically.

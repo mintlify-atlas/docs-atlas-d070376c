@@ -1,0 +1,57 @@
+---
+title: "Whitespace modes"
+description: "Control how Pretext handles spaces, tabs, and line breaks."
+---
+
+Pretext supports two whitespace modes, selected via the `whiteSpace` option passed to `prepare()` or `prepareWithSegments()`. The mode controls how spaces, tabs, and newlines are treated before line breaking.
+
+<Tabs>
+  <Tab title="normal (default)">
+    The default mode targets `white-space: normal` behavior, matching how browsers render ordinary paragraph text:
+
+    - Consecutive spaces are collapsed to a single space.
+    - Leading and trailing spaces on a line are trimmed.
+    - Newlines in the source string are treated as collapsible whitespace (not hard breaks).
+
+    ```ts
+    import { prepare, layout } from '@chenglou/pretext'
+
+    const prepared = prepare('Hello   world\n  foo', '16px Inter')
+    // Equivalent to the browser rendering "Hello world foo"
+    const { height } = layout(prepared, containerWidth, 20)
+    ```
+  </Tab>
+  <Tab title="pre-wrap">
+    Pass `{ whiteSpace: 'pre-wrap' }` to preserve whitespace as entered — useful for textarea content, code editors, and pre-formatted text:
+
+    ```ts
+    const prepared = prepare(textareaValue, '16px Inter', { whiteSpace: 'pre-wrap' })
+    const { height } = layout(prepared, textareaWidth, 20)
+    ```
+
+    In pre-wrap mode:
+
+    - Ordinary spaces are preserved and count toward line width.
+    - `\t` tabs expand at 8-space stops (matching the browser default `tab-size: 8`).
+    - `\n` hard breaks end the current line immediately.
+    - The other wrapping rules stay in effect: `word-break: normal`, `overflow-wrap: break-word`, `line-break: auto`.
+  </Tab>
+</Tabs>
+
+## When to use pre-wrap
+
+Use `{ whiteSpace: 'pre-wrap' }` when the text comes from a user-editable source where whitespace is meaningful:
+
+- A `<textarea>` field where the user controls indentation or blank lines.
+- A code or diff editor displaying source text.
+- Any content that was serialized from a pre-formatted block.
+
+For prose, comments, labels, and most UI copy, the default `normal` mode is appropriate.
+
+## Special whitespace characters
+
+Beyond the two modes above, certain Unicode characters have fixed behavior regardless of mode:
+
+- **Non-breaking spaces (NBSP, U+00A0).** Survive `prepare()` as visible content and act as glue — they prevent a word-boundary break at that position, similar to CSS `white-space: nowrap` applied to a single gap.
+- **Zero-width spaces (ZWSP, U+200B).** Survive as zero-width break opportunities. They add no visible width but allow the line breaker to split there when needed.
+- **Soft hyphens (U+00AD).** Invisible until broken. If the line breaker chooses a soft hyphen as the break point, `layoutWithLines` adds a visible trailing `-` to the line's `text` string. The character takes up no width when unbroken.

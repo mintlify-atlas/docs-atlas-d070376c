@@ -1,0 +1,75 @@
+---
+title: "prepare()"
+description: "Segment and measure text for fast DOM-free layout. Call once per text block."
+---
+
+`prepare()` is the one-time measurement pass. It normalizes whitespace, segments the text via `Intl.Segmenter`, measures each segment with canvas `measureText`, and caches the widths. The result is an opaque handle you pass to `layout()`.
+
+```ts
+import { prepare, layout } from '@chenglou/pretext'
+
+const prepared = prepare('AGI 春天到了. بدأت الرحلة 🚀', '16px Inter')
+const { height, lineCount } = layout(prepared, containerWidth, 20)
+```
+
+## Signature
+
+```ts
+prepare(text: string, font: string, options?: PrepareOptions): PreparedText
+```
+
+## Parameters
+
+<ParamField path="text" type="string" required>
+  The text string to measure. Whitespace is normalized according to the `whiteSpace` option (defaults to CSS `white-space: normal` behavior — collapsible spaces, no preserved newlines).
+</ParamField>
+
+<ParamField path="font" type="string" required>
+  CSS font shorthand in the same format as `canvasContext.font`. Must exactly match your CSS `font` declaration for the element being measured — including size, weight, style, and family.
+
+  Examples: `"16px Inter"`, `"bold 14px Arial"`, `"italic 500 18px \"Helvetica Neue\""`.
+</ParamField>
+
+<ParamField path="options" type="PrepareOptions">
+  Optional configuration object.
+
+  <Expandable title="properties">
+    <ParamField path="whiteSpace" type="'normal' | 'pre-wrap'" default="'normal'">
+      Controls whitespace handling.
+
+      - `'normal'` — collapses runs of spaces, ignores `\n` newlines (CSS `white-space: normal` behavior). Use for standard paragraph text.
+      - `'pre-wrap'` — preserves ordinary spaces, `\t` tabs, and `\n` hard breaks (textarea-style). Tabs follow the default browser `tab-size: 8`.
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Returns
+
+<ResponseField name="PreparedText" type="object">
+  An opaque handle. Do not inspect its contents — pass it directly to `layout()`. The handle is width-independent: the same `PreparedText` can be laid out at any `maxWidth` and `lineHeight` without re-preparing.
+</ResponseField>
+
+## Performance
+
+On the current benchmark snapshot, `prepare()` takes approximately **19ms for a batch of 500 texts**. Call it once when a text block first appears (e.g. when a comment loads), then call `layout()` on every resize.
+
+<Warning>
+  Avoid calling `prepare()` on every resize or render. The canvas measurement phase is expensive relative to `layout()`. Prepare once, lay out many times.
+</Warning>
+
+## Whitespace modes
+
+For standard paragraph text, the default `'normal'` mode is correct. For textarea content where newlines and tabs must be preserved, pass `{ whiteSpace: 'pre-wrap' }`:
+
+```ts
+const prepared = prepare(textareaValue, '16px Inter', { whiteSpace: 'pre-wrap' })
+const { height } = layout(prepared, textareaWidth, 20)
+```
+
+## Font accuracy note
+
+<Warning>
+  Avoid `system-ui` as the font on macOS. The canvas context and the DOM can resolve `system-ui` to different optical variants, causing measurement drift. Use a named font such as `"Helvetica"`, `"Inter"`, or `"Arial"` for guaranteed accuracy.
+</Warning>
+
+The `font` string must be an exact match for the CSS `font` shorthand on the measured element. A mismatch in weight, size, or family will produce incorrect widths.

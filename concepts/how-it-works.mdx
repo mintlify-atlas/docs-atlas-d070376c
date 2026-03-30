@@ -1,0 +1,73 @@
+---
+title: "How Pretext works"
+description: "The two-phase architecture behind DOM-free text measurement."
+---
+
+## The problem: DOM-based measurement
+
+Every call to `getBoundingClientRect()` or `offsetHeight` tells the browser to flush any pending style changes and recompute the layout of the entire document synchronously. This is called a **forced reflow**.
+
+When UI components measure text independently — for instance, a comment list where each item needs to know its height before the list can be virtualized — each measurement triggers its own reflow. At 500 text blocks, the accumulated cost is 30ms or more per frame. That is enough to drop frames and make scrolling feel wrong.
+
+## The solution: two-phase measurement
+
+Pretext avoids DOM measurement entirely by using `canvas.measureText()` as its measurement oracle. Because the canvas font engine is the same one the browser uses to render text, measured widths are accurate — no DOM reads, no reflows.
+
+The work is split into two phases with very different cost profiles:
+
+<Steps>
+  <Step title="Phase 1 — prepare()">
+    Called **once** per text block when the text first appears. Does all the expensive work:
+
+    1. Normalize collapsible whitespace (CSS `white-space: normal` behavior)
+    2. Segment text via `Intl.Segmenter` (handles CJK, Thai, Arabic, and more)
+    3. Apply glue rules: merge punctuation into the preceding word (`"better."` is measured as one unit, matching CSS behavior)
+    4. Split CJK words into individual graphemes for per-character line breaking
+    5. Measure each segment via `canvas.measureText()`, cache widths by `(segment, font)`
+    6. Pre-measure grapheme widths of long words (for `overflow-wrap: break-word`)
+    7. Apply emoji correction if needed (auto-detected per font size)
+    8. Optionally compute bidi metadata for custom renderers (`prepareWithSegments()`)
+
+    Returns an opaque `PreparedText` handle that is **width-independent** — it can be laid out at any `maxWidth` and `lineHeight` without re-measuring.
+  </Step>
+  <Step title="Phase 2 — layout()">
+    Called **on every resize**. Walks the cached segment widths with pure arithmetic: no canvas calls, no DOM reads, no string operations, no allocations.
+
+    ```ts
+    const { height, lineCount } = layout(prepared, containerWidth, lineHeight)
+    ```
+
+    Typical cost: **~0.0002ms per text block**. At 500 texts, that is 0.1ms — well within a single frame.
+  </Step>
+</Steps>
+
+## Benchmark numbers
+
+From the checked-in benchmark snapshot:
+
+- `prepare()` — ~19ms for a 500-text batch (one-time cost)
+- `layout()` — ~0.09ms for the same 500-text batch (called on every resize)
+
+## How the segment metrics cache works
+
+The measurement cache is structured as a two-level map keyed by font string and then by segment text. Once a segment has been measured at a given font, subsequent `prepare()` calls with the same text and font reuse the cached result with no canvas work.
+
+The cache is shared across all texts prepared with the same font string. You can release it with `clearCache()` if your app cycles through many fonts.
+
+```ts
+import { clearCache } from '@chenglou/pretext'
+
+clearCache() // releases the shared canvas measurement cache
+```
+
+## Why canvas is accurate enough
+
+`canvas.measureText()` calls into the same font engine the browser uses to lay out DOM text. The widths it returns are the same widths the browser would use when deciding where to break lines.
+
+The key insight is that a segment-by-segment sum — measure each word, sum the widths — is accurate enough to determine line breaks when combined with correct preprocessing (punctuation merging, CJK grapheme splitting, etc.).
+
+Pretext validates this claim with a browser accuracy sweep against real DOM layout. The checked-in snapshot shows **7680/7680** correct line counts across Chrome, Safari, and Firefox.
+
+<Note>
+`system-ui` is an exception. On macOS, the canvas and DOM resolve `system-ui` to different optical variants (SF Pro Text vs. SF Pro Display) at certain font sizes, causing measurable width divergence. Use a named font like `Inter` or `Helvetica` for guaranteed accuracy.
+</Note>

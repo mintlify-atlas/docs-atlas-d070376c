@@ -1,0 +1,107 @@
+---
+title: "Internationalization"
+description: "How Pretext handles CJK, Arabic, Thai, emoji, and other scripts."
+---
+
+Pretext uses `Intl.Segmenter` for word segmentation and canvas `measureText` for shaping, which means it inherits the browser's font engine as ground truth. This gives it broad script support without a separate Unicode shaping library.
+
+The supported CSS target is:
+
+- `white-space: normal` (or `pre-wrap` — see [Whitespace modes](/guides/whitespace-modes))
+- `word-break: normal`
+- `overflow-wrap: break-word`
+- `line-break: auto`
+
+<AccordionGroup>
+  <Accordion title="CJK (Chinese, Japanese, Korean)">
+    CJK text allows a line break between almost any two adjacent characters. Pretext splits CJK words from `Intl.Segmenter` into individual grapheme units and measures each one, matching browser per-character breaking behavior.
+
+    Kinsoku rules are applied during segmentation: certain punctuation characters that are prohibited at line starts or ends are merged with their adjacent grapheme to prevent orphaned punctuation. This includes common Japanese and Chinese punctuation such as closing brackets, commas, and periods that must stay attached to the preceding character.
+
+    ```ts
+    import { prepare, layout } from '@chenglou/pretext'
+
+    const prepared = prepare('春天到了。人工智能时代已经开始。', '16px "Noto Sans SC"')
+    const { height } = layout(prepared, 200, 24)
+    ```
+  </Accordion>
+
+  <Accordion title="Arabic and bidirectional text">
+    On the simple `prepare()` + `layout()` path, Pretext handles Arabic and mixed LTR/RTL text for height and line count without paying for bidi metadata.
+
+    On the rich path (`prepareWithSegments()`), bidi level metadata is computed per segment. This lets custom renderers reorder runs visually within each line for correct Arabic display.
+
+    ```ts
+    import { prepareWithSegments, layoutWithLines } from '@chenglou/pretext'
+
+    const prepared = prepareWithSegments('بدأت الرحلة 🚀 AGI', '18px "Noto Sans Arabic"')
+    const { lines } = layoutWithLines(prepared, 320, 28)
+    // lines[i].start and lines[i].end carry LayoutCursors into the segment stream,
+    // which includes bidi level data for each segment.
+    ```
+
+    Arabic punctuation clusters and mark sequences are handled in preprocessing so that punctuation stays attached to adjacent word units as the browser expects.
+  </Accordion>
+
+  <Accordion title="Thai, Khmer, Myanmar, Hindi, Urdu">
+    These scripts are covered by `Intl.Segmenter` word boundaries and are included in the corpus test suite. Line breaking follows the segmenter's word boundaries, and the canvas engine provides accurate per-segment widths for whichever font is in use.
+
+    ```ts
+    import { prepare, layout } from '@chenglou/pretext'
+
+    // Thai
+    const prepared = prepare('สวัสดีชาวโลก ยินดีต้อนรับสู่ยุคปัญญาประดิษฐ์', '16px "Noto Sans Thai"')
+    const { height } = layout(prepared, 300, 24)
+    ```
+
+    For Southeast Asian scripts, Pretext uses `Range`-based corpus diagnostics to validate line breaks against actual browser output. Thai, Khmer, and Myanmar are regularly tested.
+  </Accordion>
+
+  <Accordion title="Emoji and emoji sequences">
+    Emoji widths on macOS are inflated by Chrome and Firefox when the font size is below 24px. The canvas measures emoji wider than the DOM renders them (Apple Color Emoji). Pretext auto-detects this inflation by comparing canvas width against a single cached DOM read per font size, then applies a correction factor to every emoji grapheme.
+
+    Safari canvas and DOM agree on emoji width (both are wider than the font size), so no correction is applied there.
+
+    Emoji ZWJ sequences (e.g. family emoji, flag sequences) are treated as single grapheme units by `Intl.Segmenter` and measured as one unit.
+
+    ```ts
+    import { prepare, layout } from '@chenglou/pretext'
+
+    const prepared = prepare('Hello 👋 world 🚀 AGI 春天到了', '14px Inter')
+    const { height } = layout(prepared, 200, 20)
+    // Emoji correction is applied automatically at 14px on macOS
+    ```
+  </Accordion>
+
+  <Accordion title="Mixed-script text">
+    Pretext handles mixed-script text — Latin mixed with CJK, Arabic mixed with Latin, emoji sequences inside prose — as part of its normal processing. `Intl.Segmenter` segments word boundaries across script transitions, and the canvas measurement step handles whichever font resolves for each segment.
+
+    ```ts
+    import { prepare, layout } from '@chenglou/pretext'
+
+    // Mixed Arabic, Latin, CJK, and emoji in one string
+    const prepared = prepare('AGI 春天到了. بدأت الرحلة 🚀', '16px Inter')
+    const { height } = layout(prepared, 320, 22)
+    ```
+  </Accordion>
+
+  <Accordion title="Locale targeting">
+    By default, Pretext uses the runtime locale for `Intl.Segmenter`. If your app serves a specific locale or you want deterministic segmentation across environments, call `setLocale()` before preparing text:
+
+    ```ts
+    import { setLocale, prepare, layout } from '@chenglou/pretext'
+
+    setLocale('ja') // Use Japanese word segmentation rules
+    const prepared = prepare('人工知能の春が来た', '16px "Noto Sans JP"')
+    const { height } = layout(prepared, 200, 24)
+
+    setLocale() // Reset to runtime default
+    ```
+
+    `setLocale()` also clears the internal segment cache, so segments prepared under the previous locale are not mixed with segments prepared under the new one.
+  </Accordion>
+</AccordionGroup>
+
+<Warning>
+`system-ui` is not safe to use as the font argument on macOS. The canvas and DOM may resolve different optical variants of system-ui, causing measured widths to diverge from rendered widths. Use a named font such as `Inter`, `Helvetica`, or `"Helvetica Neue"` for accurate results.
+</Warning>

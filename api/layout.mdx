@@ -1,0 +1,72 @@
+---
+title: "layout()"
+description: "Compute text height from a PreparedText handle. Pure arithmetic — no DOM, no canvas."
+---
+
+`layout()` is the cheap hot path. Given a `PreparedText` handle from `prepare()`, a container width, and a line height, it walks the cached segment widths with pure arithmetic to count lines and return the total height. No DOM reads, no canvas calls, no string operations.
+
+```ts
+import { prepare, layout } from '@chenglou/pretext'
+
+const prepared = prepare('AGI 春天到了. بدأت الرحلة 🚀', '16px Inter')
+const { height, lineCount } = layout(prepared, containerWidth, 20)
+```
+
+## Signature
+
+```ts
+layout(prepared: PreparedText, maxWidth: number, lineHeight: number): LayoutResult
+```
+
+## Parameters
+
+<ParamField path="prepared" type="PreparedText" required>
+  The opaque handle returned by `prepare()`. The same handle can be reused across any number of `layout()` calls at different widths — there is no need to re-prepare on resize.
+</ParamField>
+
+<ParamField path="maxWidth" type="number" required>
+  Maximum line width in pixels. Lines that exceed this width are wrapped. Corresponds to the element's content-box width (excluding padding and border).
+</ParamField>
+
+<ParamField path="lineHeight" type="number" required>
+  Line height in pixels. Must match the CSS `line-height` for the element being measured. The returned `height` is `lineCount * lineHeight`.
+</ParamField>
+
+## Returns
+
+<ResponseField name="lineCount" type="number" required>
+  Number of wrapped lines. For example, a paragraph that breaks into three lines returns `3`.
+</ResponseField>
+
+<ResponseField name="height" type="number" required>
+  Total block height in pixels. Equal to `lineCount * lineHeight`.
+</ResponseField>
+
+## Performance
+
+On the current benchmark snapshot, `layout()` takes approximately **0.09ms for a batch of 500 texts** (~0.0002ms per text). It is safe to call on every resize event and inside virtual-scroll layout passes.
+
+## Usage in a resize handler
+
+```ts
+import { prepare, layout } from '@chenglou/pretext'
+
+const prepared = prepare(commentText, '16px Inter')
+
+function onResize(containerWidth: number) {
+  const { height } = layout(prepared, containerWidth, 20)
+  element.style.height = `${height}px`
+}
+
+window.addEventListener('resize', () => onResize(container.clientWidth))
+```
+
+Because `PreparedText` is width-independent, the `prepare()` call happens once at load time and `layout()` is called on every resize without re-measuring.
+
+## Line-breaking rules
+
+`layout()` matches CSS `white-space: normal` + `overflow-wrap: break-word` behavior:
+
+- Break before any non-space segment that would overflow the line.
+- Trailing whitespace hangs past the line edge and does not trigger a break.
+- Segments wider than `maxWidth` are broken at grapheme boundaries.

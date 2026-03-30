@@ -1,0 +1,119 @@
+---
+title: "walkLineRanges()"
+description: "Iterate over line geometry without building line text strings. Ideal for shrinkwrap layouts."
+---
+
+`walkLineRanges()` iterates over lines at a fixed max width, calling `onLine` once per line with the line's width and start/end cursors — but without materializing the line text strings. Use it for geometry-only work such as shrinkwrap, balanced text, or binary-search over widths.
+
+```ts
+import { prepareWithSegments, walkLineRanges, layoutWithLines } from '@chenglou/pretext'
+
+const prepared = prepareWithSegments(text, '16px Inter')
+
+// Find the tightest container width that still fits the text (shrinkwrap)
+let maxW = 0
+walkLineRanges(prepared, 320, line => {
+  if (line.width > maxW) maxW = line.width
+})
+// maxW is now the widest line — the minimum container width for this text
+```
+
+## Signature
+
+```ts
+walkLineRanges(
+  prepared: PreparedTextWithSegments,
+  maxWidth: number,
+  onLine: (line: LayoutLineRange) => void
+): number
+```
+
+## Parameters
+
+<ParamField path="prepared" type="PreparedTextWithSegments" required>
+  The handle returned by `prepareWithSegments()`.
+</ParamField>
+
+<ParamField path="maxWidth" type="number" required>
+  Maximum line width in pixels. All lines use this same width. Call `walkLineRanges()` repeatedly with different widths to probe geometry before committing.
+</ParamField>
+
+<ParamField path="onLine" type="(line: LayoutLineRange) => void" required>
+  Callback invoked once per line with a `LayoutLineRange` object. Called synchronously in line order.
+
+  <Expandable title="LayoutLineRange properties">
+    <ResponseField name="width" type="number" required>
+      Measured width of this line in pixels, e.g. `87.5`.
+    </ResponseField>
+    <ResponseField name="start" type="LayoutCursor" required>
+      Inclusive start cursor for this line.
+
+      <Expandable title="LayoutCursor properties">
+        <ResponseField name="segmentIndex" type="number" required>
+          Segment index within `prepared.segments`.
+        </ResponseField>
+        <ResponseField name="graphemeIndex" type="number" required>
+          Grapheme index within that segment. `0` at segment boundaries.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+    <ResponseField name="end" type="LayoutCursor" required>
+      Exclusive end cursor for this line.
+
+      <Expandable title="LayoutCursor properties">
+        <ResponseField name="segmentIndex" type="number" required>
+          Segment index within `prepared.segments`.
+        </ResponseField>
+        <ResponseField name="graphemeIndex" type="number" required>
+          Grapheme index within that segment. `0` at segment boundaries.
+        </ResponseField>
+      </Expandable>
+    </ResponseField>
+  </Expandable>
+</ParamField>
+
+## Returns
+
+<ResponseField name="lineCount" type="number" required>
+  Total number of lines at the given `maxWidth`.
+</ResponseField>
+
+## Use cases
+
+### Shrinkwrap
+
+Find the minimum container width that still fits all lines:
+
+```ts
+let maxW = 0
+walkLineRanges(prepared, 320, line => {
+  if (line.width > maxW) maxW = line.width
+})
+// maxW is now the widest line — the tightest container width that still fits the text
+```
+
+This enables multiline shrink-wrap that has historically been missing from the web platform.
+
+### Binary search for balanced text
+
+Probe multiple candidate widths cheaply, then call `layoutWithLines()` once with the final width:
+
+```ts
+let lo = 0
+let hi = maxWidth
+
+// Binary search for smallest width where the text fits in 3 lines or fewer
+while (hi - lo > 1) {
+  const mid = Math.floor((lo + hi) / 2)
+  const lineCount = walkLineRanges(prepared, mid, () => {})
+  if (lineCount <= 3) hi = mid
+  else lo = mid
+}
+
+// Now materialize lines at the chosen width
+const { lines } = layoutWithLines(prepared, hi, lineHeight)
+```
+
+<Tip>
+  Call `walkLineRanges()` repeatedly to probe widths, then call `layoutWithLines()` once with the final width to get the actual line text. This avoids string materialization during the search.
+</Tip>

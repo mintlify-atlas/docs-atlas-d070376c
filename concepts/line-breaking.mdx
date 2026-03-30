@@ -1,0 +1,131 @@
+---
+title: "Line breaking"
+description: "How Pretext implements CSS-compatible line breaking across all scripts."
+---
+
+## Overview
+
+Line breaking in Pretext happens entirely in `layout()` as pure arithmetic over the cached segment widths produced by `prepare()`. There are no canvas calls, no DOM reads, and no string operations in this path.
+
+The implemented CSS target is `white-space: normal`, `word-break: normal`, `overflow-wrap: break-word`, `line-break: auto`. Pretext validates its break decisions against real browser DOM layout. The checked-in accuracy snapshot shows **7680/7680** on Chrome, Safari, and Firefox.
+
+## Segment break kinds
+
+Each segment produced by `prepare()` carries a **break kind** that tells the line walker how it behaves at line boundaries. There are eight kinds:
+
+| Kind | Description | Example |
+|------|-------------|---------|
+| `text` | Ordinary word-like content | `hello`, `world.` |
+| `space` | Collapsible space (CSS `white-space: normal`) | ` ` between words |
+| `preserved-space` | Space that is not collapsed (`pre-wrap` mode) | ` ` in a textarea |
+| `tab` | Tab character (`pre-wrap` mode) | `\t` |
+| `glue` | Non-breaking glue — prevents a break at this position | NBSP (`\u00A0`), NNBSP (`\u202F`), WJ (`\u2060`) |
+| `zero-width-break` | Zero-width break opportunity | ZWSP (`\u200B`) |
+| `soft-hyphen` | Optional hyphen — invisible if the line does not break here | `\u00AD` |
+| `hard-break` | Explicit line break (`pre-wrap` mode) | `\n` |
+
+<Note>
+Glue segments (`NBSP`, `NNBSP`, `WJ`) survive `prepare()` as visible content and prevent ordinary word-boundary wrapping. Zero-width break opportunities (`ZWSP`) survive as zero-width break points.
+</Note>
+
+## Trailing whitespace
+
+Trailing collapsible spaces **hang past the line edge** — they do not count toward the line width when deciding whether the line fits. This matches CSS behavior: a space that would push a line over `max-width` does not by itself trigger a line break.
+
+Preserved spaces (`pre-wrap` mode) also hang at the line end.
+
+## overflow-wrap: break-word
+
+When a word segment is wider than `maxWidth`, Pretext falls back to breaking at **grapheme boundaries**. The grapheme widths are pre-measured during `prepare()` so this fallback is still arithmetic-only in `layout()`.
+
+```ts
+// At 50px wide, a long URL or unbreakable word is split at grapheme boundaries
+const prepared = prepare('superlongword', '16px Inter')
+const { lineCount } = layout(prepared, 50, 20)
+```
+
+<Warning>
+Because the default target includes `overflow-wrap: break-word`, very narrow `maxWidth` values can still cause breaks inside words. Pretext breaks only at grapheme boundaries in this case, not at arbitrary byte offsets.
+</Warning>
+
+## Language-specific line breaking
+
+<AccordionGroup>
+  <Accordion title="CJK text">
+    CJK (Chinese, Japanese, Korean) text allows a line break between any two characters. During `prepare()`, CJK word-like segments are split into individual graphemes, each of which becomes its own `text` segment.
+
+    **Kinsoku rules** prevent certain characters from appearing at the start or end of a line:
+
+    - **Line-start prohibited** (`kinsokuStart`): closing brackets, fullwidth punctuation, the prolonged sound mark `ー`, iteration marks like `ゝ` and `ヽ`. These are merged into the preceding grapheme.
+    - **Line-end prohibited** (`kinsokuEnd`): opening brackets and quotes. These are merged into the following grapheme.
+
+    Left-sticky punctuation (e.g. `。`, `、`, `！`) is also merged into the preceding grapheme.
+
+    For Chromium, Pretext additionally carries a CJK grapheme after a closing quote character when the next grapheme is also CJK, matching an observed Chromium-specific behavior.
+  </Accordion>
+  <Accordion title="Arabic text">
+    Arabic text is handled in two preprocessing passes during `prepare()`:
+
+    1. **No-space punctuation clusters**: When Arabic text omits spaces around punctuation (e.g. `فيقول:وعليك`), the punctuation is merged with the adjacent Arabic word into a single segment. This prevents the line breaker from splitting at the colon or comma.
+
+    2. **Space + combining marks**: A space followed by Unicode combining marks (`\p{M}`) before Arabic text is split into a plain space segment and a marks string that is prepended to the following Arabic word. This avoids the marks appearing attached to the wrong visual cluster.
+
+    Bidi metadata (Unicode bidirectional levels) is computed on the rich `prepareWithSegments()` path as optional custom-rendering metadata. The core `layout()` and `prepare()` paths do not consume bidi levels.
+  </Accordion>
+  <Accordion title="Thai, Khmer, and other Southeast Asian scripts">
+    Word segmentation for scripts without explicit spaces (Thai, Khmer, Lao, Myanmar) is handled by `Intl.Segmenter`, which uses the browser's built-in dictionary. Pretext does not override this segmentation.
+
+    For Myanmar, additional left-sticky preprocessing is applied for Burmese punctuation marks (`၊`, `။`, `၍`, `၌`, `၏`) and medial-glue clusters.
+  </Accordion>
+  <Accordion title="Soft hyphens">
+    Soft hyphens (`\u00AD`) are treated as a **discretionary break opportunity** — the line walker may choose to break there, but is not required to.
+
+    - When a soft hyphen is **not** the chosen break point, it contributes zero width and is invisible in the output.
+    - When a soft hyphen **is** chosen as the break point, `layoutWithLines()` appends a visible trailing `-` to `line.text` for that line.
+
+    ```ts
+    const prepared = prepareWithSegments('re\u00ADspon\u00ADsi\u00ADbi\u00ADli\u00ADty', '16px Inter')
+    const { lines } = layoutWithLines(prepared, 60, 20)
+    // lines[0].text might be 'respon-' if the break falls after 'respon'
+    ```
+
+    On Safari, Pretext prefers earlier soft-hyphen breaks when the hyphenated position fits within `maxWidth`, matching observed WebKit behavior.
+  </Accordion>
+  <Accordion title="pre-wrap mode">
+    Pass `{ whiteSpace: 'pre-wrap' }` to preserve spaces, tabs, and hard breaks:
+
+    ```ts
+    const prepared = prepare(textareaValue, '16px Inter', { whiteSpace: 'pre-wrap' })
+    ```
+
+    In this mode:
+
+    - **Ordinary spaces** are `preserved-space` segments. They hang at the line end (do not trigger a break) but are included in the painted width.
+    - **Tabs** advance to the next tab stop. Tab stops are spaced `8 × spaceWidth` apart from the start of the line, matching the default browser `tab-size: 8` behavior.
+    - **`\n` hard breaks** produce explicit `hard-break` segments. The line walker emits a new line for each one. Consecutive hard breaks produce empty lines. A trailing hard break does **not** create an extra empty line.
+
+    The other wrapping defaults (`word-break: normal`, `overflow-wrap: break-word`, `line-break: auto`) stay the same in `pre-wrap` mode.
+  </Accordion>
+</AccordionGroup>
+
+## Simple path vs. rich path
+
+The line walker has two internal paths:
+
+- **Simple path** (`simpleLineWalkFastPath`): used when the prepared text contains only `text` and `space` segments (no tabs, soft hyphens, preserved spaces, or hard breaks). This path avoids per-segment kind checks and is the common case for ordinary prose.
+
+- **Rich path**: used when any non-simple segment kind is present. Handles soft hyphen break candidates, tab advance calculations, and hard-break chunk boundaries.
+
+Both paths produce identical break decisions for text that only contains `text` and `space` segments.
+
+## Browser accuracy
+
+Pretext validates its line-break decisions against real browser DOM heights using a sweep of test paragraphs at multiple container widths:
+
+| Browser | Correct / Total |
+|---------|----------------|
+| Chrome | 7680 / 7680 |
+| Safari | 7680 / 7680 |
+| Firefox | 7680 / 7680 |
+
+Accuracy is maintained with a small per-browser line-fit tolerance: `0.005px` for Chromium/Gecko, `1/64px` for Safari/WebKit. This tolerance accounts for sub-pixel rounding differences in edge-fit decisions and does not affect normal paragraph layout.

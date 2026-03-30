@@ -1,0 +1,77 @@
+---
+title: "Variable-width layout"
+description: "Use layoutNextLine() to route text one row at a time when width changes as you go."
+---
+
+`layoutWithLines()` and `walkLineRanges()` both accept a single fixed `maxWidth` applied to every line. `layoutNextLine()` lifts that restriction: you provide a width for each line individually, computed however you like before asking for the next line.
+
+## When layoutNextLine is the right tool
+
+Use `layoutNextLine` when the available width changes from row to row:
+
+- **Text flowing around floated images.** Lines beside the image are narrower than lines below it.
+- **Multi-column editorial layouts.** The left column may have obstacles the right column doesn't.
+- **Irregular containers.** Text flowing inside a circle, a diamond, or any non-rectangular region.
+- **Obstacle-aware layout.** Per-line slot geometry computed from polygon intersections.
+
+For a fixed container width, `layoutWithLines` is simpler and slightly cheaper.
+
+## Basic usage
+
+`layoutNextLine` is an iterator: each call returns the next `LayoutLine` starting from a cursor, or `null` when the paragraph is exhausted.
+
+```ts
+let cursor = { segmentIndex: 0, graphemeIndex: 0 }
+let y = 0
+
+// Flow text around a floated image: lines beside the image are narrower
+while (true) {
+  const width = y < image.bottom ? columnWidth - image.width : columnWidth
+  const line = layoutNextLine(prepared, cursor, width)
+  if (line === null) break
+  ctx.fillText(line.text, 0, y)
+  cursor = line.end
+  y += 26
+}
+```
+
+## The LayoutCursor type
+
+```ts
+type LayoutCursor = {
+  segmentIndex: number  // Segment index in prepareWithSegments' prepared rich segment stream
+  graphemeIndex: number // Grapheme index within that segment; 0 at segment boundaries
+}
+```
+
+- **Initialize** the first line with `{ segmentIndex: 0, graphemeIndex: 0 }`.
+- **Advance** by passing the previous line's `end` cursor as the next `start`.
+- **Exhausted** when `layoutNextLine` returns `null`.
+
+The cursor points into the internal segment stream produced by `prepareWithSegments`. You do not need to manage the segment data directly.
+
+## Shrinkwrap: finding the minimum container width
+
+`walkLineRanges` is well-suited for binary-searching the tightest container width that still fits a paragraph without breaking mid-word. After finding that width, call `layoutWithLines` once to get the actual lines:
+
+```ts
+let maxW = 0
+walkLineRanges(prepared, 320, line => { if (line.width > maxW) maxW = line.width })
+// maxW is now the widest line — the tightest container width that still fits the text!
+```
+
+Because `walkLineRanges` skips string materialization, it's inexpensive to call repeatedly during a binary search over candidate widths. This is how the bubbles demo derives per-bubble shrinkwrap widths for a whole chat history without any DOM measurement.
+
+## Multi-column layout with a shared cursor
+
+The `end` cursor from `layoutNextLine` can be passed directly to the next column. This lets one continuous text stream flow across two (or more) columns without slicing the source string:
+
+```ts
+// Left column exhausts text up to leftResult.cursor.
+const leftResult = layoutColumn(prepared, { segmentIndex: 0, graphemeIndex: 0 }, leftRegion, lineHeight, obstacles)
+
+// Right column resumes from where left column left off.
+const rightResult = layoutColumn(prepared, leftResult.cursor, rightRegion, lineHeight, obstacles)
+```
+
+The text is prepared once; both columns share the same `PreparedTextWithSegments` handle.
